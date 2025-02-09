@@ -1,5 +1,5 @@
-# Chat Logger (Bakkesmod Rocket League plugin)
-Save Rocket League chats to a local JSON file
+# Chat Logger (BakkesMod plugin)
+Automatically save Rocket League chats to a local JSON file
 
 Useful for anyone wanting to do data science on the RL chats they come across
 

@@ -1,303 +1,336 @@
 #include "pch.h"
 #include "ChatLogger.h"
 
-std::string ChatLogger::userName = "?";
-std::string ChatLogger::userUID = "?";
-std::string ChatLogger::userPlatform = "?";
-std::string ChatLogger::currentMonth = "?";
-std::filesystem::path ChatLogger::bmDataFolderFilePath;
 
-void ChatLogger::logChat(PriWrapper pri, std::string chat, std::string quickChat) {
-    // handle disabled quick chats
-    bool isQuickChat = !(quickChat == "");
-    bool quickChatsEnabled = cvarManager->getCvar("ChatLogger_quickChatsEnabled").getBoolValue();
-    if (isQuickChat && !quickChatsEnabled) {
-        LOG("Didn't update chat log... (quick chat logging is disabled)");
-        return;
-    }
 
-    bool isUser = false;
-    bool isTeammate = false;
-    bool isOpponent = false;
-    bool isSpectator = pri.IsSpectator();
-    bool isBeingSpectated = false;
+void ChatLogger::log_chat(PriWrapper& pri, std::string& chat, bool is_quickchat)
+{
+	// handle disabled quick chats
+	bool save_quickchats = cvarManager->getCvar(Cvars::save_quickchats).getBoolValue();
+	if (is_quickchat && !save_quickchats)
+	{
+		LOG("Didn't update chat log... (quick chat logging is disabled)");
+		return;
+	}
 
-    bool userChatsEnabled = cvarManager->getCvar("ChatLogger_userChatsEnabled").getBoolValue();
-    bool teammateChatsEnabled = cvarManager->getCvar("ChatLogger_teammateChatsEnabled").getBoolValue();
-    bool opponentChatsEnabled = cvarManager->getCvar("ChatLogger_opponentChatsEnabled").getBoolValue();
-    bool spectatorChatsEnabled = cvarManager->getCvar("ChatLogger_spectatorChatsEnabled").getBoolValue();
-    bool spectatedPlayerChatsEnabled = cvarManager->getCvar("ChatLogger_spectatedPlayerChatsEnabled").getBoolValue();
+	bool isUser = false;
+	bool isTeammate = false;
+	bool isOpponent = false;
+	bool isSpectator = pri.IsSpectator();
+	bool isBeingSpectated = false;
 
-    std::string dateAndTime = getCurrentTimeAndDate();
-    std::string chatterUID = pri.GetUniqueIdWrapper().GetIdString();
-    std::string relation;
+	bool save_user_chats =					cvarManager->getCvar(Cvars::save_user_chats).getBoolValue();
+	bool save_teammate_chats =				cvarManager->getCvar(Cvars::save_teammate_chats).getBoolValue();
+	bool save_opponent_chats =				cvarManager->getCvar(Cvars::save_opponent_chats).getBoolValue();
+	bool save_spectator_chats =				cvarManager->getCvar(Cvars::save_spectator_chats).getBoolValue();
+	bool save_spectated_player_chats =		cvarManager->getCvar(Cvars::save_spectated_player_chats).getBoolValue();
 
-    // handle disabled chats for user
-    if (chatterUID == userUID) {
-        isUser = true;
-        relation = "me";
-    }
-    if (isUser && !userChatsEnabled) {
-        LOG("Didn't update chat log... (user chat logging is disabled)");
-        return;
-    }
+	SavedChatMessage chat_msg_data;
 
-    if (isSpectator && !isUser) {
-        relation = "spectator";
-    }
+	chat_msg_data.time = get_timestamp();
+	std::string chatter_uid = pri.GetUniqueIdWrapper().GetIdString();
+	DEBUGLOG("chatter UID: {}", chatter_uid);
+	DEBUGLOG("user UID: {}", users_uid);
 
-    if (!isUser && !isSpectator) {
-        // find chatter's team
-        unsigned char chatterTeam = pri.GetTeamNum2();
+	// handle disabled chats for user
+	if (chatter_uid == users_uid)
+	{
+		isUser = true;
+		chat_msg_data.relation = "me";
+	}
+	if (isUser && !save_user_chats)
+	{
+		LOG("Didn't update chat log... (user chat logging is disabled)");
+		return;
+	}
 
-        // find user's team
-        PlayerControllerWrapper userPlayerController = gameWrapper->GetPlayerController();
-        if (!userPlayerController) { return; }
-        PriWrapper userPri = userPlayerController.GetPRI();
-        if (!userPri) { return; }
-        unsigned char usersTeam = userPri.GetTeamNum2();     // user's team is 255 if theyre spectating (unsigned char converts -1 to 255)
+	if (isSpectator && !isUser)
+	{
+		chat_msg_data.relation = "spectator";
+	}
 
-        // determine chatter's relation to user
-        if (usersTeam != 255) {
-            if (chatterTeam == usersTeam) {
-                isTeammate = true;
-                relation = "teammate";
-            }
-            else {
-                isOpponent = true;
-                relation = "opponent";
-            }
-        }
-        else {
-            isBeingSpectated = true;
-            relation = "spectated by me";
-        }
-    }
+	if (!isUser && !isSpectator)
+	{
+		// find chatter's team
+		unsigned char chatterTeam = pri.GetTeamNum2();
 
-    // handle disabled chats for spectator/teammate/opponent
-    if (isSpectator && !spectatorChatsEnabled && !isUser) {
-        LOG("Didn't update chat log... (spectator chat logging is disabled)");
-        return;
-    }
-    if (isTeammate && !teammateChatsEnabled) {
-        LOG("Didn't update chat log... (teammate chat logging is disabled)");
-        return;
-    }
-    if (isOpponent && !opponentChatsEnabled) {
-        LOG("Didn't update chat log... (opponent chat logging is disabled)");
-        return;
-    }
-    if (isBeingSpectated && !spectatedPlayerChatsEnabled) {
-        LOG("Didn't update chat log... (spectated player chat logging is disabled)");
-        return;
-    }
+		// find user's team
+		PlayerControllerWrapper userPlayerController = gameWrapper->GetPlayerController();
+		if (!userPlayerController) return;
 
-    // get additional info to be logged
-    std::string chatterName = pri.GetPlayerName().ToString();
-    chat = isQuickChat ? quickChat : chat;  // makes sure quickchat is parsed before logging
+		PriWrapper userPri = userPlayerController.GetPRI();
+		if (!userPri) return;
 
-    OnlinePlatform platform = pri.GetPlatform();
-    if (!platform) { return; }
-    std::string platformStr = parsePlatform(platform);
+		unsigned char usersTeam = userPri.GetTeamNum2();     // user's team is 255 if theyre spectating (unsigned char converts -1 to 255)
 
-    // console log the chat which will be saved
-    LOG("\t\t{}", dateAndTime);
-    LOG("Player:\t\t{}\t({})", chatterName, relation);
-    LOG("Chat:\t\t\"{}\"", chat);
+		// determine chatter's relation to user
+		if (usersTeam != 255)
+		{
+			if (chatterTeam == usersTeam)
+			{
+				isTeammate = true;
+				chat_msg_data.relation = "teammate";
+			}
+			else
+			{
+				isOpponent = true;
+				chat_msg_data.relation = "opponent";
+			}
+		}
+		else
+		{
+			isBeingSpectated = true;
+			chat_msg_data.relation = "spectated by me";
+		}
+	}
 
-    // log chat in JSON file
-    createJsonDataAndWriteToFile(chat, chatterName, relation, dateAndTime, platformStr);
+	// handle disabled chats for spectator/teammate/opponent
+	if (isSpectator && !save_spectator_chats && !isUser)
+	{
+		LOG("Didn't update chat log... (spectator chat logging is disabled)");
+		return;
+	}
+	if (isTeammate && !save_teammate_chats)
+	{
+		LOG("Didn't update chat log... (teammate chat logging is disabled)");
+		return;
+	}
+	if (isOpponent && !save_opponent_chats)
+	{
+		LOG("Didn't update chat log... (opponent chat logging is disabled)");
+		return;
+	}
+	if (isBeingSpectated && !save_spectated_player_chats)
+	{
+		LOG("Didn't update chat log... (spectated player chat logging is disabled)");
+		return;
+	}
+
+	// get additional info to be logged
+	chat_msg_data.name =		pri.GetPlayerName().ToString();
+	chat_msg_data.chat =		is_quickchat ? parse_quickchat(chat) : chat;
+	chat_msg_data.platform =	parse_platform(static_cast<EOnlinePlatform>(static_cast<uint8_t>(pri.GetPlatform())));
+
+	LOG("Logging chat from {} ...", chat_msg_data.name);
+	write_chat_data_to_file(chat_msg_data);
 }
 
-void ChatLogger::logPartyChat(std::string name, std::string chat, bool isUser) {
-    // handle disabled chats
-    bool userChatsEnabled = cvarManager->getCvar("ChatLogger_userChatsEnabled").getBoolValue();
-    if (isUser && !userChatsEnabled) {
-        LOG("Didn't update chat log... (user chat logging is disabled)");
-        return;
-    }
-    bool partyChatsEnabled = cvarManager->getCvar("ChatLogger_partyChatsEnabled").getBoolValue();
-    if (!isUser && !partyChatsEnabled) {
-        LOG("Didn't update chat log... (party chat logging is disabled)");
-        return;
-    }
 
-    // set additional data
-    std::string relation = isUser ? "me" : "party";
-    std::string dateAndTime = getCurrentTimeAndDate();
-    std::string platform = isUser ? userPlatform : "N/A";
-    name = isUser ? userName : name;
+void ChatLogger::log_party_chat(const OnChatMessage_Params* chat_params)
+{
+	if (!chat_params)
+	{
+		LOG("[ERROR] OnChatMessage_Params* is null");
+		return;
+	}
 
-    // console log the chat which will be saved
-    LOG("\t\t" + dateAndTime);
-    LOG("Player:\t\t" + name + "\t(" + relation + ")");
-    LOG("Chat:\t\t\"" + chat + "\"");
+	// handle disabled chats
+	bool save_user_chats = cvarManager->getCvar(Cvars::save_user_chats).getBoolValue();
+	if (chat_params->bLocalPlayer && !save_user_chats)
+	{
+		LOG("Didn't update chat log... (user chat logging is disabled)");
+		return;
+	}
+	bool save_party_chats = cvarManager->getCvar(Cvars::save_party_chats).getBoolValue();
+	if (!chat_params->bLocalPlayer && !save_party_chats)
+	{
+		LOG("Didn't update chat log... (party chat logging is disabled)");
+		return;
+	}
 
-    // log chat in JSON file
-    createJsonDataAndWriteToFile(chat, name, relation, dateAndTime, platform);
+	SavedChatMessage chat_msg_data;
+	chat_msg_data.name =		chat_params->PlayerName.to_wrapper().ToString();
+	chat_msg_data.chat =		chat_params->Message.to_wrapper().ToString();
+	chat_msg_data.relation =	chat_params->bLocalPlayer ? "me" : "party";
+	chat_msg_data.time =		get_timestamp();
+	chat_msg_data.platform =	parse_platform(chat_params->SenderId.Platform);
+
+	LOG("Logging chat from {} ...", chat_msg_data.name);
+	write_chat_data_to_file(chat_msg_data);
 }
 
-std::string ChatLogger::parsePlatform(OnlinePlatform platform) {
-    switch (platform)
-    {
-    case OnlinePlatform_Steam:
-        return "Steam";
-    case OnlinePlatform_PS4:
-    case OnlinePlatform_PS3:
-        return "PlayStation";
-    case OnlinePlatform_Dingo:
-        return "Xbox";
-    case OnlinePlatform_OldNNX:
-    case OnlinePlatform_NNX:
-        return "Nintendo";
-    case OnlinePlatform_PsyNet:
-    case OnlinePlatform_Epic:
-        return "Epic";
-    default:
-    case OnlinePlatform_QQ:
-    case OnlinePlatform_Deleted:
-    case OnlinePlatform_WeGame:
-    case OnlinePlatform_MAX:
-        return "Unknown";
-    }
+
+void ChatLogger::write_chat_data_to_file(const SavedChatMessage& chat_msg_data)
+{
+	json chat_log_json = Files::get_json(chat_log_json_path);
+	if (chat_log_json.empty()) return;
+
+	// create new json object and populate it with data from chat
+	json chatObj;
+	chatObj["chat"] =			chat_msg_data.chat;
+	chatObj["playerName"] =		chat_msg_data.name;
+	chatObj["platform"] =		chat_msg_data.platform;
+	chatObj["relation"] =		chat_msg_data.relation;
+	chatObj["time"] =			chat_msg_data.time;
+
+	chat_log_json["chatMessages"].push_back(chatObj);
+
+	bool minify_chat_log = cvarManager->getCvar(Cvars::minify_chat_log).getBoolValue();
+	Files::write_json(chat_log_json_path, chat_log_json, minify_chat_log ? -1 : 4);
 }
 
-void ChatLogger::createJsonDataAndWriteToFile(std::string chat, std::string name, std::string relation, std::string time, std::string platform) {
-    bool minifyChatLog = cvarManager->getCvar("ChatLogger_minifyChatLog").getBoolValue();
+void ChatLogger::save_chats_and_clear_log()
+{
+	constexpr const char* chat_msgs_key = "chatMessages";
 
-    // create new json object and populate it with data from chat
-    nlohmann::json chatObj;
-    chatObj["chat"] = chat;
-    chatObj["playerName"] = name;
-    chatObj["platform"] = platform;
-    chatObj["relation"] = relation;
-    chatObj["time"] = time;
+	// get json data
+	json chat_log_json =	Files::get_json(chat_log_json_path);
+	json saved_chats_json =	Files::get_json(saved_chats_json_path);
+	if (chat_log_json.empty() || saved_chats_json.empty()) return;
 
-    std::filesystem::path chatLogFilePath = bmDataFolderFilePath / "Chat Logs" / "ChatLog.json";
-    std::string jsonFileRawStr = ReadContent(chatLogFilePath);
+	if (!chat_log_json.contains(chat_msgs_key))
+	{
+		LOG("[ERROR] {} doesn't contain a \"{}\" array", chat_log_json_path.filename().string(), chat_msgs_key);
+		return;
+	}
+	if (!saved_chats_json.contains(chat_msgs_key))
+	{
+		LOG("[ERROR] {} doesn't contain a \"{}\" array", saved_chats_json_path.filename().string(), chat_msgs_key);
+		return;
+	}
 
-    // prevent crash on reading invalid JSON data
-    try {
-        auto chatJsonData = nlohmann::json::parse(jsonFileRawStr);
-        chatJsonData["chatMessages"].push_back(chatObj);
+	auto& chat_log_msgs_arr = chat_log_json.at(chat_msgs_key);
+	if (chat_log_msgs_arr.empty()) return;
 
-        WriteContent(chatLogFilePath, chatJsonData.dump(minifyChatLog ? -1 : 4));
-        LOG("Added to chat log :)");
-    }
-    catch (...) {
-        LOG("*** Couldn't read the 'ChatLog.json' file! Make sure it contains valid JSON... ***");
-    }
+	auto& saved_chats_msgs_arr = saved_chats_json.at(chat_msgs_key);	// it's fine if this is empty
+
+	// append chats from 'ChatLog.json' to the end of existing chats in '...SavedChats.json'
+	saved_chats_msgs_arr.insert(saved_chats_msgs_arr.end(), chat_log_msgs_arr.begin(), chat_log_msgs_arr.end());
+
+	// write updated JSON data to file
+	bool minify_saved_chats = cvarManager->getCvar(Cvars::minify_saved_chats).getBoolValue();
+
+	Files::write_json(saved_chats_json_path, saved_chats_json, minify_saved_chats ? -1 : 4);
+	LOG("Saved chats to '{}' :)", saved_chats_json_path.filename().string());
+
+	clear_log(chat_log_json_path);
 }
 
-void ChatLogger::saveChatsAndClearLog() {
-    // set filepath variables
-    std::filesystem::path chatLogFilePath = bmDataFolderFilePath / "Chat Logs" / "ChatLog.json";
-    std::filesystem::path savedChatsFilePath = bmDataFolderFilePath / "Chat Logs" / (currentMonth + "_SavedChats.json");
-
-    // read JSON data as serialized string
-    std::string chatLogFileRawStr = ReadContent(chatLogFilePath);
-    std::string savedChatsFileRawStr = ReadContent(savedChatsFilePath);
-
-    // prevent crash if JSON data is invalid
-    try {
-        auto chatLogJsonData = nlohmann::json::parse(chatLogFileRawStr);
-        if (chatLogJsonData["chatMessages"].size() < 1) { return; }
-        auto savedChatsJsonData = nlohmann::json::parse(savedChatsFileRawStr);
-
-        // append chats from 'ChatLog.json' to existing chats in 'SavedChats.json'
-        for (int i = 0; i < chatLogJsonData["chatMessages"].size(); i++) {
-            savedChatsJsonData["chatMessages"].push_back(chatLogJsonData["chatMessages"][i]);
-        }
-
-        // write updated JSON data to file
-        bool minifySavedChats = cvarManager->getCvar("ChatLogger_minifySavedChats").getBoolValue();
-        WriteContent(savedChatsFilePath, savedChatsJsonData.dump(minifySavedChats ? -1 : 4));
-        LOG("Saved chats to '{}_SavedChats.json' :)", currentMonth);
-
-        clearLog("ChatLog.json");
-    }
-    catch (...) {
-        LOG("*** Couln't read JSON file! Make sure it's formatted correctly... ***");
-    }
+void ChatLogger::clear_log(const fs::path& file_path)
+{
+	write_empty_log_file(file_path);
+	LOG("Cleared '{}' :)", file_path.filename().string());
 }
 
-void ChatLogger::clearLog(std::string fileName) {
-    try {
-        std::string playerName = userName;
-        std::filesystem::path jsonFilePath = bmDataFolderFilePath / "Chat Logs" / fileName;
-        if (std::filesystem::exists(jsonFilePath)) {
-            std::ofstream NewFile(jsonFilePath);
-            NewFile << "{ \"user\": \"" + playerName + "\", \"chatMessages\":[]}";
-            NewFile.close();
-            LOG("Cleared '{}' :)", fileName);
-        }
-        else {
-            LOG("*** Couldn't clear '{}' ... it doesn't exist! ***", fileName);
-        }
-    }
-    catch (...) {
-        LOG("*** Something went wrong while clearing '{}' ***", fileName);
-    }
+
+void ChatLogger::write_empty_log_file(const fs::path& file_path)
+{
+	if (!successfully_stored_user_info)
+	{
+		get_user_data();
+	}
+
+	std::ofstream NewFile(file_path);
+	NewFile << "{ \"user\": \"" + users_name + "\", \"chatMessages\":[]}";
+	NewFile.close();
 }
 
-std::string ChatLogger::getCurrentTimeAndDate(std::string format) {
-    auto const time = std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
-    return format == "full" ? std::format("{:%m/%d/%Y %r}", time) : std::format("{:%B_%Y}", time);
+
+std::string ChatLogger::get_timestamp(bool only_month_and_year)
+{
+	auto const time = std::chrono::current_zone()->to_local(std::chrono::system_clock::now());
+	return only_month_and_year ? std::format("{:%B_%Y}", time) : std::format("{:%m/%d/%Y %r}", time);
 }
 
-std::string ChatLogger::ReadContent(std::filesystem::path FileName) {
-    std::ifstream Temp(FileName);
-    std::stringstream Buffer;
-    Buffer << Temp.rdbuf();
-    return (Buffer.str());
+
+void ChatLogger::plugin_init()
+{
+	set_json_filepaths();
+	get_user_data();
 }
 
-void ChatLogger::WriteContent(std::filesystem::path FileName, std::string Buffer) {
-    std::ofstream File(FileName, std::ofstream::trunc);
-    File << Buffer;
-    File.close();
+
+void ChatLogger::set_json_filepaths()
+{
+	fs::path chatLogsFolder = gameWrapper->GetDataFolder() / "Chat Logs";
+
+	chat_log_json_path = chatLogsFolder / "ChatLog.json";
+	saved_chats_json_path = chatLogsFolder / (get_timestamp(true) + "_SavedChats.json");
+
+	// create 'Chat Logs' folder if it doesn't exist
+	if (!std::filesystem::exists(chatLogsFolder))
+	{
+		std::filesystem::create_directory(chatLogsFolder);
+		LOG("'Chat Logs' folder didn't exist... so I created it.");
+	}
 }
 
-void ChatLogger::CheckJsonFiles() {
-    std::filesystem::path chatLogsFolder = bmDataFolderFilePath / "Chat Logs";
-    std::filesystem::path chatLogFilePath = chatLogsFolder / "ChatLog.json";
-    std::filesystem::path savedChatsFilePath = chatLogsFolder / (currentMonth + "_SavedChats.json");
 
-    // create 'Chat Logs' folder if it doesn't exist
-    if (!std::filesystem::exists(chatLogsFolder)) {
-        std::filesystem::create_directory(chatLogsFolder);
-        LOG("'Chat Logs' folder didn't exist... so I created it.");
-    }
-
-    // create JSON files if they don't exist
-    if (!std::filesystem::exists(chatLogFilePath)) {
-        std::ofstream NewFile(chatLogFilePath);
-        NewFile << "{ \"user\": \"" + userName + "\", \"chatMessages\":[]}";
-        NewFile.close();
-        LOG("'ChatLog.json' didn't exist... so I created it.");
-    }
-    if (!std::filesystem::exists(savedChatsFilePath)) {
-        std::ofstream NewFile(savedChatsFilePath);
-        NewFile << "{ \"user\": \"" + userName + "\", \"chatMessages\":[]}";
-        NewFile.close();
-        LOG("'{}_SavedChats.json' didn't exist... so I created it.", currentMonth);
-    }
+void ChatLogger::check_json_files()
+{
+	// create JSON files if they don't exist
+	if (!std::filesystem::exists(chat_log_json_path))
+	{
+		write_empty_log_file(chat_log_json_path);
+		LOG("'{}' didn't exist... so I created it.", chat_log_json_path.filename().string());
+	}
+	if (!std::filesystem::exists(saved_chats_json_path))
+	{
+		write_empty_log_file(saved_chats_json_path);
+		LOG("'{}' didn't exist... so I created it.", saved_chats_json_path.filename().string());
+	}
 }
 
-void ChatLogger::retrieveUserData() {
-    try {
-        bool isEpic = gameWrapper->IsUsingEpicVersion();
-        userPlatform = isEpic ? "Epic" : "Steam";
-        userName = gameWrapper->GetPlayerName().ToString();
-        userUID = gameWrapper->GetUniqueID().GetIdString();
-        bmDataFolderFilePath = gameWrapper->GetDataFolder();
-        currentMonth = getCurrentTimeAndDate("month");
-        LOG("Successfully retrieved user data");
-        LOG("Player name: {}", userName);
-        LOG("Player UID: {}", userUID);
-        LOG("Platform: {}", userPlatform);
-    }
-    catch (...) {
-        LOG("Couldn't retrieve user data :(");
-    }
+
+void ChatLogger::get_user_data()
+{
+	users_name =		gameWrapper->GetPlayerName().ToString();
+	users_uid =			gameWrapper->GetUniqueID().GetIdString();
+
+	if (users_name == "Player 1" || users_uid == "Unknown|0|0")
+	{
+		LOG("Unable to get valid user data...");
+		return;
+	}
+
+	check_json_files();	// only create the json files when valid user data is stored
+
+	successfully_stored_user_info = true;
+	users_platform =	gameWrapper->IsUsingEpicVersion() ? "Epic" : "Steam";
+
+	LOG("Successfully retrieved user data...");
+	LOG("Player name: {}", users_name);
+	LOG("Player UID: {}", users_uid);
+	LOG("Platform: {}", users_platform);
+}
+
+
+std::string ChatLogger::parse_quickchat(const std::string& msg)
+{
+	auto it = quickchat_ids_to_text.find(msg);
+	if (it == quickchat_ids_to_text.end())
+	{
+		LOG("[ERROR] \"{}\" not found in hardcoded quickchat map... plugin might need an update", msg);
+		return std::string();
+	}
+
+	return it->second;
+}
+
+
+std::string ChatLogger::parse_platform(EOnlinePlatform platform)
+{
+	switch (platform)
+	{
+	case EOnlinePlatform::OnlinePlatform_Steam:
+		return "Steam";
+	case EOnlinePlatform::OnlinePlatform_PS4:
+	case EOnlinePlatform::OnlinePlatform_PS3:
+		return "PlayStation";
+	case EOnlinePlatform::OnlinePlatform_Dingo:
+		return "Xbox";
+	case EOnlinePlatform::OnlinePlatform_OldNNX:
+	case EOnlinePlatform::OnlinePlatform_NNX:
+		return "Nintendo";
+	case EOnlinePlatform::OnlinePlatform_PsyNet:
+	case EOnlinePlatform::OnlinePlatform_Epic:
+		return "Epic";
+	case EOnlinePlatform::OnlinePlatform_Unknown:
+	case EOnlinePlatform::OnlinePlatform_QQ_DEPRECATED:
+	case EOnlinePlatform::OnlinePlatform_WeGame_DEPRECATED:
+	case EOnlinePlatform::OnlinePlatform_Deleted:
+	case EOnlinePlatform::OnlinePlatform_END:
+	default:
+		return "Unknown";
+	}
 }

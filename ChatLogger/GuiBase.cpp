@@ -3,7 +3,7 @@
 
 std::string SettingsWindowBase::GetPluginName()
 {
-	return "ChatLogger";
+	return "Chat Logger";
 }
 
 void SettingsWindowBase::SetImGuiContext(uintptr_t ctx)
