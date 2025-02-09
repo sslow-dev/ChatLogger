@@ -84,7 +84,13 @@
     <ClCompile Include="Functions.cpp">
       <Filter>Plugin\src</Filter>
     </ClCompile>
-    <ClCompile Include="ChatLoggerSettings.cpp">
+    <ClCompile Include="Settings.cpp">
+      <Filter>Plugin\src</Filter>
+    </ClCompile>
+    <ClCompile Include="EventCallbacks.cpp">
+      <Filter>Plugin\src</Filter>
+    </ClCompile>
+    <ClCompile Include="Utils.cpp">
       <Filter>Plugin\src</Filter>
     </ClCompile>
   </ItemGroup>
@@ -147,6 +153,18 @@
       <Filter>Plugin\header</Filter>
     </ClInclude>
     <ClInclude Include="nlohmann.hpp">
+      <Filter>Plugin\header</Filter>
+    </ClInclude>
+    <ClInclude Include="Cvars.hpp">
+      <Filter>Plugin\header</Filter>
+    </ClInclude>
+    <ClInclude Include="Events.hpp">
+      <Filter>Plugin\header</Filter>
+    </ClInclude>
+    <ClInclude Include="GameStructs.hpp">
+      <Filter>Plugin\header</Filter>
+    </ClInclude>
+    <ClInclude Include="Utils.hpp">
       <Filter>Plugin\header</Filter>
     </ClInclude>
   </ItemGroup>
