@@ -22,7 +22,7 @@
 
 #include "logging.h"
 
-#include <nlohmann.hpp>
+#include <nlohmann/json.hpp>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
