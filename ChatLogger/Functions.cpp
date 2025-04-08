@@ -282,16 +282,17 @@ void ChatLogger::get_user_data()
 		LOG("Unable to get valid user data...");
 		return;
 	}
+	else
+		successfully_stored_user_info = true;
 
-	check_json_files();	// only create the json files when valid user data is stored
-
-	successfully_stored_user_info = true;
 	users_platform =	gameWrapper->IsUsingEpicVersion() ? "Epic" : "Steam";
 
 	LOG("Successfully retrieved user data...");
 	LOG("Player name: {}", users_name);
 	LOG("Player UID: {}", users_uid);
 	LOG("Platform: {}", users_platform);
+
+	check_json_files();	// only create the json files when valid user data is stored
 }
 
 
